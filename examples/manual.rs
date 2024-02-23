@@ -5,6 +5,7 @@ use aws_config::BehaviorVersion;
 use aws_sdk_s3;
 use aws_sdk_s3::types::Object;
 use clap::Parser;
+use derive_builder::Builder;
 use std::collections::VecDeque;
 
 #[derive(Parser)]
@@ -13,12 +14,18 @@ struct Args {
     bucket: String,
 }
 
+#[derive(Builder)]
 pub struct S3Iter<'a> {
     bucket: &'a str,
     client: &'a aws_sdk_s3::Client,
+
+    #[builder(setter(into, strip_option), default)]
     prefix: Option<String>,
+    #[builder(private, setter(skip))]
     next_continuation_token: Option<String>,
+    #[builder(private, setter(skip))]
     contents: VecDeque<Object>,
+    #[builder(private, setter(skip))]
     is_truncated: Option<bool>,
 }
 
@@ -66,14 +73,10 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let client = aws_sdk_s3::Client::new(&config);
 
-    let mut iter = S3Iter {
-        client: &client,
-        bucket: &bucket,
-        contents: vec![].into(),
-        prefix: None,
-        next_continuation_token: None,
-        is_truncated: None,
-    };
+    let mut iter = S3IterBuilder::default()
+        .client(&client)
+        .bucket(&bucket)
+        .build()?;
 
     let mut count = 0;
 
