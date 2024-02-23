@@ -19,8 +19,6 @@ pub struct S3Iter<'a> {
     bucket: &'a str,
     client: &'a aws_sdk_s3::Client,
 
-    #[builder(setter(into, strip_option), default)]
-    prefix: Option<String>,
     #[builder(private, setter(skip))]
     next_continuation_token: Option<String>,
     #[builder(private, setter(skip))]
@@ -41,8 +39,7 @@ impl S3Iter<'_> {
                 let result = self
                     .client
                     .list_objects_v2()
-                    .bucket(self.bucket.to_owned())
-                    .set_prefix(self.prefix.to_owned())
+                    .bucket(self.bucket)
                     .set_continuation_token(self.next_continuation_token.to_owned())
                     .send()
                     .await?;
@@ -79,7 +76,6 @@ async fn main() -> Result<(), anyhow::Error> {
         .build()?;
 
     let mut count = 0;
-
     while let Some(object) = iter.next().await? {
         eprintln!("{}", object.key.unwrap_or_default());
         count += 1;

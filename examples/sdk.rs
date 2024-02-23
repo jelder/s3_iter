@@ -25,7 +25,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let client = aws_sdk_s3::Client::new(&config);
     let mut response = client
         .list_objects_v2()
-        .bucket(bucket.to_owned())
+        .bucket(bucket)
         .into_paginator()
         .send();
 
