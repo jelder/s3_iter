@@ -14,6 +14,34 @@ struct Args {
     bucket: String,
 }
 
+#[tokio::main]
+async fn main() -> Result<(), anyhow::Error> {
+    let args = Args::parse();
+    let bucket = args.bucket;
+
+    let region_provider = RegionProviderChain::default_provider().or_else("us-east-1");
+    let config = aws_config::defaults(BehaviorVersion::latest())
+        .region(region_provider)
+        .load()
+        .await;
+
+    let client = aws_sdk_s3::Client::new(&config);
+
+    let mut iter = S3IterBuilder::default()
+        .client(&client)
+        .bucket(&bucket)
+        .build()?;
+
+    let mut count = 0;
+    while let Some(object) = iter.next().await? {
+        eprintln!("{}", object.key.unwrap_or_default());
+        count += 1;
+    }
+
+    println!("Found {} objects", count);
+    Ok(())
+}
+
 #[derive(Builder)]
 pub struct S3Iter<'a> {
     bucket: &'a str,
@@ -55,32 +83,4 @@ impl S3Iter<'_> {
             (None, Some(false)) => Ok(None),
         }
     }
-}
-
-#[tokio::main]
-async fn main() -> Result<(), anyhow::Error> {
-    let args = Args::parse();
-    let bucket = args.bucket;
-
-    let region_provider = RegionProviderChain::default_provider().or_else("us-east-1");
-    let config = aws_config::defaults(BehaviorVersion::latest())
-        .region(region_provider)
-        .load()
-        .await;
-
-    let client = aws_sdk_s3::Client::new(&config);
-
-    let mut iter = S3IterBuilder::default()
-        .client(&client)
-        .bucket(&bucket)
-        .build()?;
-
-    let mut count = 0;
-    while let Some(object) = iter.next().await? {
-        eprintln!("{}", object.key.unwrap_or_default());
-        count += 1;
-    }
-
-    println!("Found {} objects", count);
-    Ok(())
 }
