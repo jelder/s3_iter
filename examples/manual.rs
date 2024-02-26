@@ -5,8 +5,6 @@ use aws_config::BehaviorVersion;
 use aws_sdk_s3;
 use aws_sdk_s3::types::Object;
 use clap::Parser;
-use derive_builder::Builder;
-use std::collections::VecDeque;
 
 #[derive(Parser)]
 struct Args {
@@ -27,10 +25,7 @@ async fn main() -> Result<()> {
 
     let client = aws_sdk_s3::Client::new(&config);
 
-    let mut iter = S3IterBuilder::default()
-        .client(&client)
-        .bucket(&bucket)
-        .build()?;
+    let mut iter = S3Iter::new(&client, &bucket);
 
     let mut count = 0;
     while let Some(object) = iter.next().await? {
@@ -42,45 +37,76 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-#[derive(Builder)]
 pub struct S3Iter<'a> {
     bucket: &'a str,
     client: &'a aws_sdk_s3::Client,
 
-    #[builder(private, setter(skip))]
     next_continuation_token: Option<String>,
-    #[builder(private, setter(skip))]
-    contents: VecDeque<Object>,
-    #[builder(private, setter(skip))]
-    is_truncated: Option<bool>,
+    contents: Vec<Object>,
+    truncated: Truncation,
+}
+
+#[derive(Clone, Copy)]
+enum Truncation {
+    NotYetKnown,
+    Truncated,
+    NotTruncated,
 }
 
 impl S3Iter<'_> {
+    pub fn new<'a>(client: &'a aws_sdk_s3::Client, bucket: &'a str) -> S3Iter<'a> {
+        S3Iter {
+            bucket,
+            client,
+            next_continuation_token: None,
+            contents: Vec::new(),
+            truncated: Truncation::NotYetKnown,
+        }
+    }
+
+    async fn fetch(&mut self) -> Result<()> {
+        let result = self
+            .client
+            .list_objects_v2()
+            .bucket(self.bucket)
+            .set_continuation_token(self.next_continuation_token.to_owned())
+            .send()
+            .await?;
+
+        self.next_continuation_token = result.next_continuation_token;
+        self.set_truncated(result.is_truncated.unwrap_or_default());
+
+        self.contents = result.contents.unwrap_or_default();
+        // Ensure that we can efficiently emit objects in the same order we received them.
+        self.contents.reverse();
+
+        Ok(())
+    }
+
+    fn set_truncated(&mut self, is_truncated: bool) {
+        self.truncated = if is_truncated {
+            Truncation::Truncated
+        } else {
+            Truncation::NotTruncated
+        }
+    }
+
     pub async fn next(&mut self) -> Result<Option<Object>> {
-        match (self.contents.pop_front(), self.is_truncated) {
-            // Most common case: we have objects
+        match (self.contents.pop(), self.truncated) {
+            // Branch 1:
+            // The most common case: we have objects
             (Some(object), _) => Ok(Some(object)),
 
-            // Next most common case, and also the true entry point of this function
-            (None, None) | (None, Some(true)) => {
-                // Note that in a real application, you'd need to deal with rate limits, errors, and retries here.
-                let result = self
-                    .client
-                    .list_objects_v2()
-                    .bucket(self.bucket)
-                    .set_continuation_token(self.next_continuation_token.to_owned())
-                    .send()
-                    .await?;
-
-                self.contents = result.contents.unwrap_or_default().into();
-                self.next_continuation_token = result.next_continuation_token;
-                self.is_truncated = result.is_truncated;
-
-                Ok(self.contents.pop_front())
+            // Branch 2:
+            // The next most common cases, making next (or first) API call.
+            (None, Truncation::Truncated | Truncation::NotYetKnown) => {
+                self.fetch().await?;
+                Ok(self.contents.pop())
             }
 
-            // Least common case: we have no objects and we're not expecting any more
-            (None, Some(false)) => Ok(None),
+            // Branch 3:
+            // Least common case, nothing in queue and we're not expecting more
+            (None, Truncation::NotTruncated) => Ok(None),
         }
     }
 }
