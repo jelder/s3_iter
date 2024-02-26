@@ -77,10 +77,8 @@ impl S3Iter<'_> {
             .send()
             .await?;
 
-        if let Some(token) = result.next_continuation_token {
-            self.state = State::Partial {
-                continuation_token: token,
-            };
+        if let Some(continuation_token) = result.next_continuation_token {
+            self.state = State::Partial { continuation_token };
         } else {
             self.state = State::Complete;
         }
