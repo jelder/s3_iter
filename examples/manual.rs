@@ -40,17 +40,17 @@ async fn main() -> Result<()> {
 pub struct S3Iter<'a> {
     bucket: &'a str,
     client: &'a aws_sdk_s3::Client,
-
-    next_continuation_token: Option<String>,
-    contents: Vec<Object>,
-    truncated: Truncation,
+    state: State,
+    queue: Vec<Object>,
 }
 
-#[derive(Clone, Copy)]
-enum Truncation {
+enum State {
+    /// Initial state, we don't yet know if there are more objects to fetch
     NotYetKnown,
-    Truncated,
-    NotTruncated,
+    /// We know there are more objects to fetch, and this is the token to use
+    Partial { continuation_token: String },
+    /// We know there are no more objects to fetch
+    Complete,
 }
 
 impl S3Iter<'_> {
@@ -58,55 +58,58 @@ impl S3Iter<'_> {
         S3Iter {
             bucket,
             client,
-            next_continuation_token: None,
-            contents: Vec::new(),
-            truncated: Truncation::NotYetKnown,
+            state: State::NotYetKnown,
+            queue: vec![],
         }
     }
 
     async fn fetch(&mut self) -> Result<()> {
+        // This is where, in a real app, you'd handle errors and retries
         let result = self
             .client
             .list_objects_v2()
             .bucket(self.bucket)
-            .set_continuation_token(self.next_continuation_token.to_owned())
+            .set_continuation_token(if let State::Partial { continuation_token } = &self.state {
+                Some(continuation_token.to_owned())
+            } else {
+                None
+            })
             .send()
             .await?;
 
-        self.next_continuation_token = result.next_continuation_token;
-        self.set_truncated(result.is_truncated.unwrap_or_default());
+        if let Some(token) = result.next_continuation_token {
+            self.state = State::Partial {
+                continuation_token: token,
+            };
+        } else {
+            self.state = State::Complete;
+        }
 
-        self.contents = result.contents.unwrap_or_default();
-        // Ensure that we can efficiently emit objects in the same order we received them.
-        self.contents.reverse();
+        // Ensure that we can efficiently pop and return objects in the same
+        // order we received them by reversing the list. Alternatively, we could
+        // chose a VecDeque for this field, but that has slightly more overhead.
+        self.queue = result.contents.unwrap_or_default();
+        self.queue.reverse();
 
         Ok(())
     }
 
-    fn set_truncated(&mut self, is_truncated: bool) {
-        self.truncated = if is_truncated {
-            Truncation::Truncated
-        } else {
-            Truncation::NotTruncated
-        }
-    }
-
     pub async fn next(&mut self) -> Result<Option<Object>> {
-        match (self.contents.pop(), self.truncated) {
+        match (self.queue.pop(), &self.state) {
             // Branch 1:
-            // The most common case: we have objects
+            // The most common case: we have objects. Truncation is irrelevant.
             (Some(object), _) => Ok(Some(object)),
 
             // Branch 2:
             // The next most common cases, making next (or first) API call.
-            (None, Truncation::Truncated | Truncation::NotYetKnown) => {
+            (None, State::Partial { .. } | State::NotYetKnown) => {
                 self.fetch().await?;
-                Ok(self.contents.pop())
+                Ok(self.queue.pop())
             }
 
             // Branch 3:
             // Least common case, nothing in queue and we're not expecting more
-            (None, Truncation::NotTruncated) => Ok(None),
+            (None, State::Complete) => Ok(None),
         }
     }
 }
