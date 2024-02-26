@@ -97,7 +97,7 @@ impl S3Iter<'_> {
     pub async fn next(&mut self) -> Result<Option<Object>> {
         match (self.queue.pop(), &self.state) {
             // Branch 1:
-            // The most common case: we have objects. Truncation is irrelevant.
+            // The most common case: we have objects. Nothing else is relevant.
             (Some(object), _) => Ok(Some(object)),
 
             // Branch 2:
