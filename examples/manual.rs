@@ -3,6 +3,7 @@ use aws_config;
 use aws_config::meta::region::RegionProviderChain;
 use aws_config::BehaviorVersion;
 use aws_sdk_s3;
+use aws_sdk_s3::operation::list_objects_v2::builders::ListObjectsV2FluentBuilder;
 use aws_sdk_s3::types::Object;
 use clap::Parser;
 
@@ -15,7 +16,6 @@ struct Args {
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Args::parse();
-    let bucket = args.bucket;
 
     let region_provider = RegionProviderChain::default_provider().or_else("us-east-1");
     let config = aws_config::defaults(BehaviorVersion::latest())
@@ -25,7 +25,7 @@ async fn main() -> Result<()> {
 
     let client = aws_sdk_s3::Client::new(&config);
 
-    let mut iter = S3Iter::new(&client, &bucket);
+    let mut iter = S3ObjectIter::new(client.list_objects_v2().bucket(args.bucket));
 
     let mut count = 0;
     while let Some(object) = iter.next().await? {
@@ -37,9 +37,8 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-pub struct S3Iter<'a> {
-    bucket: &'a str,
-    client: &'a aws_sdk_s3::Client,
+pub struct S3ObjectIter {
+    list_objects_v2_builder: ListObjectsV2FluentBuilder,
     state: State,
     queue: Vec<Object>,
 }
@@ -53,11 +52,10 @@ enum State {
     Complete,
 }
 
-impl S3Iter<'_> {
-    pub fn new<'a>(client: &'a aws_sdk_s3::Client, bucket: &'a str) -> S3Iter<'a> {
-        S3Iter {
-            bucket,
-            client,
+impl S3ObjectIter {
+    pub fn new(list_objects_v2_builder: ListObjectsV2FluentBuilder) -> S3ObjectIter {
+        S3ObjectIter {
+            list_objects_v2_builder,
             state: State::NotYetKnown,
             queue: vec![],
         }
@@ -66,9 +64,8 @@ impl S3Iter<'_> {
     async fn fetch(&mut self) -> Result<()> {
         // This is where, in a real app, you'd handle errors and retries
         let result = self
-            .client
-            .list_objects_v2()
-            .bucket(self.bucket)
+            .list_objects_v2_builder
+            .clone()
             .set_continuation_token(if let State::Partial { continuation_token } = &self.state {
                 Some(continuation_token.to_owned())
             } else {
