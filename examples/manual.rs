@@ -29,7 +29,7 @@ async fn main() -> Result<()> {
 
     let mut count = 0;
     while let Some(object) = iter.next().await? {
-        eprintln!("{}", object.key.unwrap_or_default());
+        eprintln!("{}", object.key.unwrap());
         count += 1;
     }
 
@@ -94,18 +94,20 @@ impl S3Iter<'_> {
 
     pub async fn next(&mut self) -> Result<Option<Object>> {
         match (self.queue.pop(), &self.state) {
-            // Branch 1:
+            // Arm 1:
             // The most common case: we have objects. Nothing else is relevant.
+            // The `_` means "anything here in this tuple"
             (Some(object), _) => Ok(Some(object)),
 
-            // Branch 2:
+            // Arm 2:
             // The next most common cases, making next (or first) API call.
+            // The `{ .. }` means "anything here in this struct"
             (None, State::Partial { .. } | State::NotYetKnown) => {
                 self.fetch().await?;
                 Ok(self.queue.pop())
             }
 
-            // Branch 3:
+            // Arm 3:
             // Least common case, nothing in queue and we're not expecting more
             (None, State::Complete) => Ok(None),
         }
