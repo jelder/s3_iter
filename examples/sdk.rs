@@ -4,8 +4,10 @@ use aws_config::BehaviorVersion;
 use aws_sdk_s3;
 use clap::Parser;
 
+/// Print all objects in an S3 bucket
 #[derive(Parser)]
 struct Args {
+    /// Bucket name
     #[clap(short, long)]
     bucket: String,
 }

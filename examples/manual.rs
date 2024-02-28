@@ -6,8 +6,10 @@ use aws_sdk_s3::operation::list_objects_v2::builders::ListObjectsV2FluentBuilder
 use aws_sdk_s3::types::Object;
 use clap::Parser;
 
+/// Print all objects in an S3 bucket
 #[derive(Parser)]
 struct Args {
+    /// Bucket name
     #[clap(short, long)]
     bucket: String,
 }
