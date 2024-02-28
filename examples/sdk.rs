@@ -17,8 +17,9 @@ async fn main() -> Result<()> {
     let args = Args::parse();
     let bucket = args.bucket;
 
-    let client =
-        aws_sdk_s3::Client::new(&aws_config::defaults(BehaviorVersion::latest()).load().await);
+    let client = aws_sdk_s3::Client::new(
+        &aws_config::defaults(BehaviorVersion::latest()).load().await,
+    );
 
     let mut response = client
         .list_objects_v2()

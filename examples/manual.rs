@@ -18,10 +18,12 @@ struct Args {
 async fn main() -> Result<()> {
     let args = Args::parse();
 
-    let client =
-        aws_sdk_s3::Client::new(&aws_config::defaults(BehaviorVersion::latest()).load().await);
+    let client = aws_sdk_s3::Client::new(
+        &aws_config::defaults(BehaviorVersion::latest()).load().await,
+    );
 
-    let mut iter = S3ObjectIter::new(client.list_objects_v2().bucket(args.bucket));
+    let mut iter =
+        S3ObjectIter::new(client.list_objects_v2().bucket(args.bucket));
 
     let mut count = 0;
     while let Some(object) = iter.next().await? {
@@ -49,7 +51,9 @@ enum State {
 }
 
 impl S3ObjectIter {
-    pub fn new(list_objects_v2_builder: ListObjectsV2FluentBuilder) -> S3ObjectIter {
+    pub fn new(
+        list_objects_v2_builder: ListObjectsV2FluentBuilder,
+    ) -> S3ObjectIter {
         S3ObjectIter {
             list_objects_v2_builder,
             state: State::NotYetKnown,
@@ -62,11 +66,13 @@ impl S3ObjectIter {
         let result = self
             .list_objects_v2_builder
             .clone()
-            .set_continuation_token(if let State::Partial { continuation_token } = &self.state {
-                Some(continuation_token.to_owned())
-            } else {
-                None
-            })
+            .set_continuation_token(
+                if let State::Partial { continuation_token } = &self.state {
+                    Some(continuation_token.to_owned())
+                } else {
+                    None
+                },
+            )
             .send()
             .await?;
 
