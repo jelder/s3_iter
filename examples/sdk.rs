@@ -1,6 +1,5 @@
 use anyhow::Result;
 use aws_config;
-use aws_config::meta::region::RegionProviderChain;
 use aws_config::BehaviorVersion;
 use aws_sdk_s3;
 use clap::Parser;
@@ -16,13 +15,9 @@ async fn main() -> Result<()> {
     let args = Args::parse();
     let bucket = args.bucket;
 
-    let region_provider = RegionProviderChain::default_provider().or_else("us-east-1");
-    let config = aws_config::defaults(BehaviorVersion::latest())
-        .region(region_provider)
-        .load()
-        .await;
+    let client =
+        aws_sdk_s3::Client::new(&aws_config::defaults(BehaviorVersion::latest()).load().await);
 
-    let client = aws_sdk_s3::Client::new(&config);
     let mut response = client
         .list_objects_v2()
         .bucket(bucket)
