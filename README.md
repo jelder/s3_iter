@@ -3,7 +3,7 @@
 Rust demonstrations of matching and iterating.
 
 ```
-cargo run --example manual -- --bucket my-bucket
+cargo run -- --bucket my-bucket
 ```
 
 An alternative version using only the official Rust SDK is also provided:
