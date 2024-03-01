@@ -27,7 +27,7 @@ async fn main() -> Result<()> {
 
     let mut count = 0;
     while let Some(object) = iter.next().await? {
-        eprintln!("{}", object.key.unwrap());
+        println!("{}", object.key.unwrap());
         count += 1;
     }
 

@@ -37,7 +37,7 @@ async fn main() -> Result<()> {
                 }
             }
             Err(err) => {
-                eprintln!("{err:?}")
+                println!("{err:?}")
             }
         }
     }
