@@ -72,11 +72,12 @@ impl S3ObjectIter {
         // This is where, in a real app, you'd handle errors and retries
         let result = builder.send().await?;
 
-        if let Some(continuation_token) = result.next_continuation_token {
-            self.state = State::Partial { continuation_token };
-        } else {
-            self.state = State::Complete;
-        }
+        self.state =
+            if let Some(continuation_token) = result.next_continuation_token {
+                State::Partial { continuation_token }
+            } else {
+                State::Complete
+            };
 
         // Ensure that we can efficiently pop and return objects in the same
         // order we received them by reversing the list. Alternatively, we could
