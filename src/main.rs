@@ -62,19 +62,15 @@ impl S3ObjectIter {
     }
 
     async fn fetch(&mut self) -> Result<()> {
+        let mut builder = self.list_objects_v2_builder.clone();
+
+        if let State::Partial { continuation_token } = &self.state {
+            builder = builder
+                .set_continuation_token(Some(continuation_token.to_owned()));
+        }
+
         // This is where, in a real app, you'd handle errors and retries
-        let result = self
-            .list_objects_v2_builder
-            .clone()
-            .set_continuation_token(
-                if let State::Partial { continuation_token } = &self.state {
-                    Some(continuation_token.to_owned())
-                } else {
-                    None
-                },
-            )
-            .send()
-            .await?;
+        let result = builder.send().await?;
 
         if let Some(continuation_token) = result.next_continuation_token {
             self.state = State::Partial { continuation_token };
